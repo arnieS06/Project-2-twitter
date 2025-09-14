@@ -1,4 +1,5 @@
 """Visualizing Twitter Sentiment Across America"""
+# Arnav Sharma, Glenn Mah
 
 from data import word_sentiments, load_tweets
 from datetime import datetime
@@ -6,7 +7,7 @@ from geo import us_states, geo_distance, make_position, longitude, latitude
 from maps import draw_state, draw_name, draw_dot, wait
 from string import ascii_letters
 from ucb import main, trace, interact, log_current_line
-import string #had to import to use in phase1, q2
+from math import sqrt
 
 
 ###################################
@@ -118,7 +119,7 @@ def extract_words(text):
     """
     cleaned = ''
     for char in text:
-        if char in string.ascii_letters:
+        if char in ascii_letters:
             cleaned += char
         else:
             cleaned += ' '
@@ -236,7 +237,34 @@ def find_centroid(polygon):
     >>> tuple(map(float, find_centroid([p1, p2, p1])))  # A zero-area polygon
     (1.0, 2.0, 0.0)
     """
+
     "*** YOUR CODE HERE ***"
+    values = [0] * 3
+    centroid_lat,centroid_long, A = 0,0,0
+    
+    # calculate Area
+    for i in range(len(polygon)-1): # end at the length of the thingy minus 1
+        A += (latitude(polygon[i]) * longitude(polygon[i+1])) - (latitude(polygon[i+1]) * longitude(polygon[i]))
+    
+    # if we get a 0 area
+    if (A == 0):  
+        values = [latitude(polygon[0]), longitude(polygon[0]), A]
+        return values
+    else:
+        A /= 2
+
+    # calculate lat & long
+    for i in range(len(polygon)-1):
+        centroid_lat += ((latitude(polygon[i]) + latitude(polygon[i+1])) * ((latitude(polygon[i]) * longitude(polygon[i+1])) - (latitude(polygon[i+1]) * longitude(polygon[i]))))
+        centroid_long += ((longitude(polygon[i]) + longitude(polygon[i+1])) * ((latitude(polygon[i]) * longitude(polygon[i+1])) - (latitude(polygon[i+1]) * longitude(polygon[i]))))
+
+    centroid_lat /= (6*A)
+    centroid_long /= (6*A)
+
+    values = [centroid_lat,centroid_long,abs(A)]
+    return values
+
+
 
 def find_state_center(polygons):
     """Compute the geographic center of a state, averaged over its polygons.
@@ -260,6 +288,18 @@ def find_state_center(polygons):
     -156.21763
     """
     "*** YOUR CODE HERE ***"
+    state_lat, state_long, lat_numer, denom, long_numer, denom = 0,0,0,0,0,0
+
+    for i in polygons:
+        centroid = find_centroid(i)
+        lat_numer += (centroid[0] * centroid[2])
+        long_numer += (centroid[1] * centroid[2])
+        denom += centroid[2]
+    state_lat = lat_numer/denom
+    state_long = long_numer/denom
+    state_centroid = make_position(state_lat,state_long)
+    return state_centroid
+
 
 
 ###################################
@@ -287,6 +327,21 @@ def group_tweets_by_state(tweets):
     """
     tweets_by_state = {}
     "*** YOUR CODE HERE ***"
+    state_centroids = {state: find_state_center(polygons) for state, polygons in us_states.items()}
+
+    for tweet in tweets:
+        location = tweet_location(tweet)
+        closest_state = min(state_centroids.keys(), 
+            key=lambda state: geo_distance(location, state_centroids[state])) 
+        # using geo distance functions instead 
+        # of euclidian approximation 
+        # as euclidian doesnt account for earths curvature which gives us a bad estimate for a value
+
+        if closest_state in tweets_by_state:
+            tweets_by_state[closest_state].append(tweet)
+        else:
+            tweets_by_state[closest_state] = [tweet]
+
     return tweets_by_state
 
 def average_sentiments(tweets_by_state):
@@ -303,7 +358,21 @@ def average_sentiments(tweets_by_state):
     """
     averaged_state_sentiments = {}
     "*** YOUR CODE HERE ***"
+    for state, tweets in tweets_by_state.items():
+        total_sentiment = 0
+        count = 0
+
+        for tweet in tweets:
+            sentiment = analyze_tweet_sentiment(tweet)
+            if has_sentiment(sentiment):
+                total_sentiment += sentiment_value(sentiment)
+                count += 1
+        if count > 0:
+            averaged_state_sentiments[state] = total_sentiment/count 
+
     return averaged_state_sentiments
+
+
 
 
 ##########################
